@@ -6,7 +6,6 @@ import org.springframework.web.bind.annotation.*;
 import reactor.core.publisher.Mono;
 import run.mone.agentx.dto.ConfigRequest;
 import run.mone.agentx.dto.common.ApiResponse;
-import run.mone.agentx.entity.Agent;
 import run.mone.agentx.entity.AgentConfig;
 import run.mone.agentx.entity.User;
 import run.mone.agentx.service.AgentConfigService;

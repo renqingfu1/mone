@@ -19,6 +19,7 @@ public class UserService {
     private final UserRepository userRepository;
     private final PasswordEncoder passwordEncoder;
     private final JwtService jwtService;
+    private final ThirdPartyValidationService thirdPartyValidationService;
 
     public Mono<User> createUser(User user) {
         log.info("开始创建用户: {}", user.getUsername());
@@ -80,18 +81,35 @@ public class UserService {
             return Mono.just(false);
         }
         
-        return userRepository.findByToken(token)
-                .map(user -> {
-                    // 检查用户状态是否正常
-                    if (user.getState() != 1) {
-                        log.warn("用户状态异常，token验证失败: {}", user.getUsername());
-                        return false;
+        // 首先尝试第三方接口校验
+        return Mono.fromSupplier(() -> thirdPartyValidationService.validateToken(token))
+                .flatMap(thirdPartyUser -> {
+                    if (thirdPartyUser != null) {
+                        // 第三方校验成功，检查用户状态
+                        if (thirdPartyUser.getState() != null && thirdPartyUser.getState() != 1) {
+                            log.warn("第三方校验用户状态异常，token验证失败: {}", thirdPartyUser.getUsername());
+                            return Mono.just(false);
+                        }
+                        log.info("第三方token验证成功: {}", thirdPartyUser.getUsername());
+                        return Mono.just(true);
                     }
-                    log.info("token验证成功: {}", user.getUsername());
-                    return true;
+                    
+                    // 第三方校验失败或未配置，使用原有的数据库查询逻辑
+                    log.debug("第三方校验未配置或失败，使用本地数据库校验");
+                    return userRepository.findByToken(token)
+                            .map(user -> {
+                                // 检查用户状态是否正常
+                                if (user.getState() != 1) {
+                                    log.warn("用户状态异常，token验证失败: {}", user.getUsername());
+                                    return false;
+                                }
+                                log.info("本地token验证成功: {}", user.getUsername());
+                                return true;
+                            })
+                            .defaultIfEmpty(false);
                 })
-                .defaultIfEmpty(false)
-                .doOnError(error -> log.error("验证token时发生错误: {}", error.getMessage(), error));
+                .doOnError(error -> log.error("验证token时发生错误: {}", error.getMessage(), error))
+                .onErrorReturn(false);
     }
 
     public Mono<UserDTO> getUserInfo(User user) {

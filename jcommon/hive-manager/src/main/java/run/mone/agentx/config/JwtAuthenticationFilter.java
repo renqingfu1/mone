@@ -16,6 +16,7 @@ import org.springframework.web.filter.OncePerRequestFilter;
 import lombok.RequiredArgsConstructor;
 import run.mone.agentx.entity.User;
 import run.mone.agentx.service.JwtService;
+import run.mone.agentx.service.ThirdPartyValidationService;
 import run.mone.agentx.service.UserService;
 
 @Component
@@ -24,6 +25,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
     private final JwtService jwtService;
     private final UserService userService;
+    private final ThirdPartyValidationService thirdPartyValidationService;
     private static final String TOKEN_COOKIE_NAME = "auth_token";
 
     @Override
@@ -75,6 +77,9 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                     if (TOKEN_COOKIE_NAME.equals(cookie.getName())) {
                         jwt = cookie.getValue();
                         break;
+                    } else if ("sessionId".equals(cookie.getName())) {
+                        jwt = cookie.getValue();
+                        break;
                     }
                 }
             }
@@ -89,6 +94,20 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
         }
         
         try {
+            // 首先尝试第三方接口校验
+            User thirdPartyUser = thirdPartyValidationService.validateToken(jwt);
+            
+            if (thirdPartyUser != null) {
+                // 第三方校验成功，直接使用第三方返回的用户对象
+                UsernamePasswordAuthenticationToken authToken = new UsernamePasswordAuthenticationToken(
+                        thirdPartyUser, null, null);
+                authToken.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
+                SecurityContextHolder.getContext().setAuthentication(authToken);
+                filterChain.doFilter(request, response);
+                return;
+            }
+            
+            // 第三方校验失败或未配置，使用原有的JWT校验逻辑
             username = jwtService.extractUsername(jwt);
             
             if (username != null && SecurityContextHolder.getContext().getAuthentication() == null) {
