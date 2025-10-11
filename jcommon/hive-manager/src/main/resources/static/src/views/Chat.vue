@@ -20,6 +20,7 @@
       :onSwitchLlm="sendSwitchLlmCommand"
       :onExecuteMcpCommand="sendMcpCommand"
       :onExecuteSystemCommand="sendSystemCommand"
+      :onSendConfigCommand="sendConfigCommand"
       @pidAction="onPidAction"
       @onClick2Conversion="onClick2Conversion"
     />

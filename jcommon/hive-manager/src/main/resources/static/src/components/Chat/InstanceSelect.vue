@@ -133,7 +133,7 @@
 <script setup lang="ts">
 import TokenUsage from '@/components/Chat/components/tokenUsage/index.vue'
 import { useUserStore } from '@/stores/user'
-import { computed, ref, watch, watchEffect } from 'vue'
+import { computed, ref, watch, watchEffect, nextTick } from 'vue'
 import { ElMessageBox, ElMessage } from 'element-plus'
 import { useChatContextStore } from '@/stores/chat-context'
 import { Setting, Delete } from '@element-plus/icons-vue'
@@ -236,6 +236,10 @@ const props = defineProps({
     type: Function,
     required: false,
   },
+  onSendConfigCommand: {
+    type: Function,
+    required: false,
+  },
 })
 const list = computed(() => {
   return getInstance()
@@ -296,10 +300,25 @@ const handleOpenConfig = async () => {
 
   loading.value = true
   try {
+    // 先调用 sendConfigCommand 更新 agentConfigStore 中的配置数据
+    if (props.onSendConfigCommand) {
+      try {
+        await props.onSendConfigCommand()
+        console.log('Config command executed successfully')
+        
+        // 等待响应式数据更新
+        await nextTick(() => {
+          console.log('Response data updated')
+        })
+      } catch (error) {
+        console.error('Failed to execute config command:', error)
+      }
+    }
+    
     const response = await getAgentConfigs(selectedInstance.agentId)
     const apiConfigs = response.data?.data || []
     
-    // 从 roleConfig 获取的配置
+    // 从 roleConfig 获取的配置（使用更新后的数据）
     const roleConfig = agentConfigStore.agentConfig?.roleConfig || {}
     
     // 合并配置：优先显示 API 配置，然后添加 roleConfig 中的配置
@@ -372,7 +391,7 @@ const removeConfig = async (index: number) => {
 
 const handleSubmitConfig = async () => {
   // 验证配置是否完整
-  if (configList.value.some((item) => !item.key || !item.value)) {
+  if (configList.value.some((item) => !item.key || item.value === null || item.value === undefined)) {
     ElMessage.warning('请填写完整的配置信息')
     return
   }
@@ -429,18 +448,7 @@ const sendRefreshCommand = async () => {
   }
 }
 
-// 发送 /reload 命令
-const sendReloadCommand = async () => {
-  try {
-    if (props.onExecuteSystemCommand) {
-      await props.onExecuteSystemCommand('/reload', false)
-    } else {
-      console.warn('onExecuteSystemCommand prop is not provided')
-    }
-  } catch (error) {
-    console.error('发送 /reload 命令失败:', error)
-  }
-}
+
 
 
 </script>
