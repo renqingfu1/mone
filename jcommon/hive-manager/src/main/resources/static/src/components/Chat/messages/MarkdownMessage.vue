@@ -1,13 +1,22 @@
 <template>
   <div class="sc-message--text">
-    <slot :message="message" :messageText="messageText">
+    <slot :message="message" :componentData="componentData">
       <div class="sc-message--text-content" ref="textCtxRef">
         <div v-if="cmd">
           <span style="color: aqua">{{ cmd.slice(0, 1) }}</span
           >{{ cmd.slice(1) }}
         </div>
         <div v-if="knowledgeBase" v-html="knowledgeBase"></div>
-        <div ref="textRef" class="markdown-body" v-html="messageText"></div>
+        <div ref="textRef" class="markdown-body">
+          <template v-if="componentData.length > 0">
+            <McpComponentRenderer
+              v-for="(component, index) in componentData"
+              :key="index"
+              :component-data="component"
+            />
+          </template>
+          <div v-else-if="plainText" class="plain-text">{{ plainText }}</div>
+        </div>
       </div>
     </slot>
   </div>
@@ -15,23 +24,16 @@
 
 <script setup lang="ts">
 import { ref, computed, watch, onMounted, onUpdated, onUnmounted, nextTick } from 'vue'
-import mdKatex from "@traptitech/markdown-it-katex";
-// @ts-expect-error No type definitions available for markdown-it-link-attributes
-import mila from "markdown-it-link-attributes";
-import hljs from "highlight.js";
-import MarkdownIt from "markdown-it";
 import util from "@/libs/util";
 import { copyToClip } from "@/libs/copy";
-import arrowUrl from "../assets/imgs/arrow1.png";
 
 import "../assets/scss/github-markdown.scss";
 import "../assets/scss/github-markdown-light.scss";
 import "../assets/scss/highlight.scss";
 import "../assets/scss/MarkdownMessage.scss";
 import "@/styles/markdown-mcp.scss";
-import { markdownItBolt } from '@/plugins/markdown-it-bolt'
-import { markdownItMcp } from '@/plugins/markdown-it-mcp'
-import { markdownItStock } from '@/plugins/markdown-it-stock'
+import McpComponentRenderer from '../McpComponentRenderer.vue'
+import { extractComponentsFromText } from '@/utils/xml-component-parser'
 import { useChatContextStore } from '@/stores/chat-context'
 import { usePidLogStore } from '@/stores/pid-log'
 import type {
@@ -61,72 +63,8 @@ const textCtxRef = ref<HTMLDivElement>()
 // Reactive data
 const collapseTimer = ref<number>(0)
 
-const mdi = new MarkdownIt({
-  html: false,
-  linkify: true,
-  highlight: (code: string, language: string) => {
-    const validLang = !!(language && hljs.getLanguage(language));
-    if (validLang) {
-      const lang = language ?? "";
-      return highlightBlock(
-        hljs.highlight(code, { language: lang }).value,
-        lang
-      );
-    }
-    return highlightBlock(hljs.highlightAuto(code).value, "");
-  },
-});
-
-mdi.use(mila, { attrs: { target: "_blank", rel: "noopener" } });
-mdi.use(mdKatex, {
-  blockClass: "katexmath-block rounded-md p-[10px]",
-  errorColor: " #cc0000",
-});
-interface Token {
-  content: string;
-  [key: string]: any;
-}
-
-interface HighlightResult {
-  value: string;
-  language?: string;
-}
-
-mdi.renderer.rules.fence = (tokens: Token[], idx: number): string => {
-  const t = tokens[idx];
-  const code = t.content.trim();
-  if (!code) {
-    return '';
-  }
-  const res: HighlightResult = hljs.highlightAuto(code);
-  return highlightBlock(res.value, res.language);
-}
-mdi.use(markdownItBolt)
-mdi.use(markdownItStock)
-mdi.use(markdownItMcp)
-
-function highlightBlock(str: string, lang?: string) {
-  const len = str.split("\n").length;
-  const maxLen = 20;
-
-  return `<pre class="code-block-wrapper">
-    <div class="code-block-header">
-      <span class="code-block-header__lang">${lang}</span>
-      <span class="code-block-header__copy">复制代码</span>
-    </div>
-    <code class="hljs code-block-body ${lang} hide-code show-code">${str}</code>${
-    len > maxLen
-      ? `<div class="code-block-footer"><img src="${arrowUrl}" class="arrow-img" /></div>`
-      : ""
-  }</pre>`;
-}
-
-// // Computed
-// const messageText = computed(() => {
-//   return mdi.render(props.message.data.text);
-// })
-
-const messageText = ref('');
+const componentData = ref<any[]>([]);
+const plainText = ref<string>('');
 let debounceTimer: number | null = null;
 
 watch(
@@ -141,7 +79,18 @@ watch(
     debounceTimer = setTimeout(() => {
       nextTick(() => {
         if (newText) {
-          messageText.value = mdi.render(newText);
+          console.log("newText", newText);
+          // 解析 XML 组件（不依赖 MarkdownIt）
+          const components = extractComponentsFromText(newText);
+          console.log("components", components);
+          if (components.length > 0) {
+            componentData.value = components;
+            plainText.value = '';
+          } else {
+            // 如果没有组件，显示纯文本
+            componentData.value = [];
+            plainText.value = newText;
+          }
         }
       });
     }, 300); // 300ms 防抖延迟
@@ -514,6 +463,7 @@ const addPidButtonEvents = () => {
 //   // }
 // }
 
+
 const removeEvents = () => {
   if (textRef.value) {
     // 移除copy事件
@@ -763,6 +713,12 @@ onUnmounted(() => {
 
   code {
     font-family: 'Courier New', Courier, monospace !important;
+  }
+
+  .plain-text {
+    white-space: pre-wrap;
+    word-wrap: break-word;
+    line-height: 1.6;
   }
 }
 
