@@ -1,34 +1,46 @@
 <template>
-  <span class="pid-buttons-container process-running" :data-pid="pid" title="进程控制面板">
-    <button 
-      class="pid-kill-button" 
-      :data-pid="pid" 
-      data-action="kill" 
-      :title="`终止进程 PID: ${pid}`"
-      @click="handleKill"
-    >
-      <i class="fa-solid fa-power-off"></i>
-      <span>杀死进程</span>
-      <small>{{ pid }}</small>
-    </button>
-    <button 
-      class="pid-detach-button" 
-      :data-pid="pid" 
-      data-action="detach" 
-      :title="`将进程 PID: ${pid} 转为后台运行`"
-      @click="handleDetach"
-    >
-      <i class="fa-solid fa-arrow-up-right-from-square"></i>
-      <span>后台运行</span>
-      <small>{{ pid }}</small>
-    </button>
-  </span>
+  <div class="pid-component">
+    <span class="pid-buttons-container process-running" :data-pid="processPid" title="进程控制面板">
+      <button 
+        class="pid-kill-button" 
+        :data-pid="processPid" 
+        data-action="kill" 
+        :title="`终止进程 PID: ${processPid}`"
+        @click="handleKill"
+      >
+        <i class="fa-solid fa-power-off"></i>
+        <span>杀死进程</span>
+        <small>{{ processPid }}</small>
+      </button>
+      <button 
+        class="pid-detach-button" 
+        :data-pid="processPid" 
+        data-action="detach" 
+        :title="`将进程 PID: ${processPid} 转为后台运行`"
+        @click="handleDetach"
+      >
+        <i class="fa-solid fa-arrow-up-right-from-square"></i>
+        <span>后台运行</span>
+        <small>{{ processPid }}</small>
+      </button>
+    </span>
+    <div v-if="processContent" class="pid-content">
+      <pre>{{ processContent }}</pre>
+    </div>
+  </div>
 </template>
 
 <script setup lang="ts">
+import { computed } from 'vue'
+
 const props = defineProps<{
+  processPid?: string
+  processContent?: string
+  // 兼容旧的 pid prop
   pid?: string
 }>()
+
+const processPid = computed(() => props.processPid || props.pid || '')
 
 const emit = defineEmits<{
   kill: [pid: string]
@@ -36,14 +48,16 @@ const emit = defineEmits<{
 }>()
 
 const handleKill = () => {
-  if (props.pid) {
-    emit('kill', props.pid)
+  const pid = processPid.value
+  if (pid) {
+    emit('kill', pid)
   }
 }
 
 const handleDetach = () => {
-  if (props.pid) {
-    emit('detach', props.pid)
+  const pid = processPid.value
+  if (pid) {
+    emit('detach', pid)
   }
 }
 </script>
@@ -142,6 +156,29 @@ small {
   50% {
     opacity: 1;
     filter: brightness(1.2);
+  }
+}
+
+.pid-component {
+  margin: 10px 0;
+}
+
+.pid-content {
+  margin-top: 10px;
+  padding: 12px;
+  background: rgba(30, 30, 30, 0.8);
+  border-radius: 6px;
+  border: 1px solid rgba(61, 61, 61, 0.5);
+  
+  pre {
+    margin: 0;
+    padding: 0;
+    color: #e1e1e1;
+    font-family: 'Courier New', monospace;
+    font-size: 0.9em;
+    white-space: pre-wrap;
+    word-wrap: break-word;
+    line-height: 1.5;
   }
 }
 </style>

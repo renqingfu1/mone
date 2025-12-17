@@ -34,7 +34,6 @@ export function parseXmlToComponents(xmlContent: string): ComponentNode[] {
         // 初始化标签数据收集
         tagData[name] = {
           text: '',
-          message: '',
           serverName: '',
           toolName: '',
           arguments: '',
@@ -42,6 +41,8 @@ export function parseXmlToComponents(xmlContent: string): ComponentNode[] {
           command: '',
           question: '',
           pid: '',
+          processPid: '',
+          processContent: '',
           content: '',
           msgId: '',
           fileName: attributes.fileName || '',
@@ -57,23 +58,23 @@ export function parseXmlToComponents(xmlContent: string): ComponentNode[] {
     },
     ontext(text) {
       const currentComponent = getCurrentComponent();
-      if (!currentComponent) return;
+      
+      // 如果文本在标签外（没有当前组件），创建文本节点
+      if (!currentComponent) {
+        // 保留所有文本，包括空白字符
+        if (text && text.trim()) {
+          components.push({
+            type: 'text',
+            text: text
+          });
+        }
+        return;
+      }
       
       const tagName = currentComponent.type;
       
       // 根据不同的标签类型收集内容
-      if (tagName === 'chat') {
-        // chat 标签内的 message 内容需要特殊处理
-        if (!tagData[tagName]) tagData[tagName] = { message: '' };
-        // message 标签的内容会在 onclosetag 中处理
-      } else if (tagName === 'message' && componentStack.length > 1) {
-        // message 在 chat 内部
-        const parent = componentStack[componentStack.length - 2];
-        if (parent && parent.type === 'chat') {
-          if (!tagData['chat']) tagData['chat'] = { message: '' };
-          tagData['chat'].message += text;
-        }
-      } else if (tagName === 'server_name' && componentStack.length > 1) {
+      if (tagName === 'server_name' && componentStack.length > 1) {
         const parent = componentStack[componentStack.length - 2];
         if (parent && parent.type === 'use_mcp_tool') {
           if (!tagData['use_mcp_tool']) tagData['use_mcp_tool'] = { serverName: '' };
@@ -109,18 +110,23 @@ export function parseXmlToComponents(xmlContent: string): ComponentNode[] {
           if (!tagData['ask_followup_question']) tagData['ask_followup_question'] = { question: '' };
           tagData['ask_followup_question'].question += text;
         }
-      } else if (tagName === 'pid') {
-        if (!tagData['pid']) tagData['pid'] = { pid: '' };
-        tagData['pid'].pid += text;
       } else if (tagName === 'process_pid' && componentStack.length > 1) {
         const parent = componentStack[componentStack.length - 2];
-        if (parent && parent.type === 'terminal_append') {
+        if (parent && parent.type === 'pid') {
+          // pid 标签内的 process_pid
+          if (!tagData['pid']) tagData['pid'] = { processPid: '', processContent: '' };
+          tagData['pid'].processPid += text;
+        } else if (parent && parent.type === 'terminal_append') {
           if (!tagData['terminal_append']) tagData['terminal_append'] = { pid: '' };
           tagData['terminal_append'].pid += text;
         }
       } else if (tagName === 'process_content' && componentStack.length > 1) {
         const parent = componentStack[componentStack.length - 2];
-        if (parent && parent.type === 'terminal_append') {
+        if (parent && parent.type === 'pid') {
+          // pid 标签内的 process_content
+          if (!tagData['pid']) tagData['pid'] = { processPid: '', processContent: '' };
+          tagData['pid'].processContent += text;
+        } else if (parent && parent.type === 'terminal_append') {
           if (!tagData['terminal_append']) tagData['terminal_append'] = { content: '' };
           tagData['terminal_append'].content += text;
         }
@@ -147,9 +153,7 @@ export function parseXmlToComponents(xmlContent: string): ComponentNode[] {
           }
           
           // 根据标签类型设置对应的 props
-          if (tagname === 'chat') {
-            component.props.message = data.message?.trim() || '';
-          } else if (tagname === 'use_mcp_tool') {
+          if (tagname === 'use_mcp_tool') {
             component.props.serverName = data.serverName?.trim() || '';
             component.props.toolName = data.toolName?.trim() || '';
             component.props.arguments = data.arguments?.trim() || '';
@@ -159,7 +163,8 @@ export function parseXmlToComponents(xmlContent: string): ComponentNode[] {
           } else if (tagname === 'ask_followup_question') {
             component.props.question = data.question?.trim() || '';
           } else if (tagname === 'pid') {
-            component.props.pid = data.pid?.trim() || '';
+            component.props.processPid = data.processPid?.trim() || '';
+            component.props.processContent = data.processContent?.trim() || '';
           } else if (tagname === 'terminal_append') {
             component.props.pid = data.pid?.trim() || '';
             component.props.content = data.content?.trim() || '';
@@ -180,7 +185,82 @@ export function parseXmlToComponents(xmlContent: string): ComponentNode[] {
   parser.write(xmlContent);
   parser.end();
 
-  return components;
+  // 合并相同 process_pid 的 pid 组件
+  return mergePidComponents(components);
+}
+
+/**
+ * 合并相同 process_pid 的 pid 组件
+ * 将所有相同 process_pid 的 process_content 合并到一个 pid 组件中
+ */
+function mergePidComponents(components: ComponentNode[]): ComponentNode[] {
+  // 收集所有 pid 组件，按 process_pid 分组
+  const pidMap = new Map<string, ComponentNode[]>();
+  
+  // 递归收集所有 pid 组件
+  const collectPidComponents = (nodes: ComponentNode[]) => {
+    for (const node of nodes) {
+      if (node.type === 'pid' && node.props?.processPid) {
+        const processPid = node.props.processPid;
+        if (!pidMap.has(processPid)) {
+          pidMap.set(processPid, []);
+        }
+        pidMap.get(processPid)!.push(node);
+      }
+      
+      // 递归处理子节点
+      if (node.children && node.children.length > 0) {
+        collectPidComponents(node.children);
+      }
+    }
+  };
+  
+  collectPidComponents(components);
+  
+  // 合并相同 process_pid 的组件
+  pidMap.forEach((pidNodes, processPid) => {
+    if (pidNodes.length <= 1) {
+      return; // 只有一个，不需要合并
+    }
+    
+    // 合并所有 process_content
+    const mergedContent = pidNodes
+      .map(node => node.props?.processContent || '')
+      .filter(content => content.trim())
+      .join('\n');
+    
+    // 更新第一个组件的 process_content
+    const firstNode = pidNodes[0];
+    if (firstNode.props) {
+      firstNode.props.processContent = mergedContent;
+    }
+    
+    // 标记其他节点为待删除
+    for (let i = 1; i < pidNodes.length; i++) {
+      pidNodes[i].type = '__DELETE__';
+    }
+  });
+  
+  // 递归删除标记为 __DELETE__ 的组件
+  const removeDeletedComponents = (nodes: ComponentNode[]): ComponentNode[] => {
+    const result: ComponentNode[] = [];
+    
+    for (const node of nodes) {
+      if (node.type === '__DELETE__') {
+        continue; // 跳过待删除的节点
+      }
+      
+      if (node.children && node.children.length > 0) {
+        node.children = removeDeletedComponents(node.children);
+      }
+      
+      result.push(node);
+    }
+    
+    return result;
+  };
+  
+  return removeDeletedComponents(components);
 }
 
 /**

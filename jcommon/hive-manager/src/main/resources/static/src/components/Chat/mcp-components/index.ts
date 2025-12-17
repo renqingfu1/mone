@@ -24,6 +24,7 @@ export { default as NotificationComponent } from './NotificationComponent.vue'
 export { default as DownloadFileComponent } from './DownloadFileComponent.vue'
 export { default as HiveMsgIdComponent } from './HiveMsgIdComponent.vue'
 export { default as TextComponent } from './TextComponent.vue'
+export { default as MessageComponent } from './MessageComponent.vue'
 
 // 组件映射表
 import ChatComponent from './ChatComponent.vue'
@@ -51,6 +52,7 @@ import NotificationComponent from './NotificationComponent.vue'
 import DownloadFileComponent from './DownloadFileComponent.vue'
 import HiveMsgIdComponent from './HiveMsgIdComponent.vue'
 import TextComponent from './TextComponent.vue'
+import MessageComponent from './MessageComponent.vue'
 
 export const componentMap: Record<string, any> = {
   'chat': ChatComponent,
@@ -78,4 +80,5 @@ export const componentMap: Record<string, any> = {
   'download_file': DownloadFileComponent,
   'hive-msg-id': HiveMsgIdComponent,
   'text': TextComponent,
+  'message': MessageComponent,
 }

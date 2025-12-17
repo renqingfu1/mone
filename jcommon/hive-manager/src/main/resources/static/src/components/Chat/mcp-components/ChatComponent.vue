@@ -5,15 +5,12 @@
       <span>聊天</span>
     </div>
     <div class="chat-content">
-      <div class="chat-message">{{ message }}</div>
+      <slot></slot>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-const props = defineProps<{
-  message?: string
-}>()
 </script>
 
 <style scoped lang="scss">
